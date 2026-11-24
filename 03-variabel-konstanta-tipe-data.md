@@ -17,6 +17,7 @@
   - [Deklarasi dan Zero Value](#deklarasi-dan-zero-value)
   - [`const` dan `iota`](#const-dan-iota)
   - [Rune, String, dan Konversi](#rune-string-dan-konversi)
+  - [Bilangan Kompleks](#bilangan-kompleks)
 - [Latihan](#latihan)
 
 ---
@@ -119,6 +120,7 @@ Hal penting yang perlu diwaspadai:
 - **Integer overflow** pada variabel biasa terjadi **diam-diam (wrap-around)**, tidak menimbulkan error maupun panic — misalnya `uint8(255) + 1` menghasilkan `0`. Pada konstanta, overflow adalah error kompilasi.
 - **Pembagian integer** membulatkan ke arah nol: `7 / 2 == 3`. Operator `%` mengambil tanda dari bilangan yang dibagi: `-7 % 3 == -1`.
 - **Floating point tidak presisi**: `x + y` dengan `x := 0.1` dan `y := 0.2` tidak persis `0.3` (hasilnya `0.30000000000000004`). Perbandingan konstanta literal `0.1+0.2 == 0.3` justru `true` karena konstanta dihitung dengan presisi tak terbatas saat kompilasi. Jangan pakai `float64` untuk uang — gunakan integer satuan terkecil (sen) atau library desimal.
+- **Bilangan kompleks** (`complex64` = dua `float32`, `complex128` = dua `float64`) adalah tipe bawaan, bukan library. Dibuat dengan fungsi `complex(real, imag)` atau literal imajiner `3 + 4i`, dan dipecah dengan `real(z)` dan `imag(z)`. Literal kompleks tanpa tipe berjenis `complex128` secara default. Operator `+ - * /` dan `==` berlaku, tetapi `<` dan `>` **tidak** (bilangan kompleks tidak terurut). Fungsi matematika (nilai absolut, akar, eksponen) ada di paket `math/cmplx`. Di praktik sehari-hari tipe ini jarang dipakai; ia relevan untuk pemrosesan sinyal, simulasi, dan komputasi ilmiah.
 - Pakai `int` sebagai pilihan default untuk angka bulat, kecuali Anda butuh ukuran tertentu (format file, protokol jaringan, atau memori).
 
 ### 3.6 Runes dan Strings
@@ -305,6 +307,40 @@ baris 2 \n tidak diproses`
 }
 ```
 
+### Bilangan Kompleks
+
+```go
+// kompleks.go
+package main
+
+import (
+	"fmt"
+	"math/cmplx"
+)
+
+func main() {
+	a := complex(3, 4)         // complex128 (default)
+	var b complex128 = 1 + 2i  // literal imajiner
+	var c complex64 = complex(1, 1)
+
+	fmt.Printf("%T %v\n", a, a)
+	fmt.Printf("%T %v\n", c, c)
+
+	fmt.Println(a+b, a*b)            // (4+6i) (-5+10i)
+	fmt.Println(real(a), imag(a))    // 3 4
+	fmt.Println(cmplx.Abs(a))        // 5  (panjang vektor 3-4-5)
+	fmt.Println(cmplx.Sqrt(-1))      // (0+1i)
+	fmt.Println(a == complex(3, 4))  // true
+	// fmt.Println(a < b)            // error kompilasi: bilangan kompleks tidak terurut
+}
+```
+
+```bash
+go run kompleks.go
+```
+
+Perhatikan bahwa `a * b` menghitung `(3+4i)(1+2i) = 3 + 6i + 4i + 8i² = -5 + 10i`, sehingga hasilnya sesuai aturan aljabar kompleks tanpa kode tambahan.
+
 ## Latihan
 
 1. Deklarasikan variabel dengan lima cara berbeda (`var` dengan tipe, `var` tanpa tipe, `var` tanpa nilai, `var` berkelompok, `:=`) lalu cetak nilai dan tipenya dengan `%T`. Mengapa `:=` tidak bisa dipakai di level paket?
@@ -314,6 +350,7 @@ baris 2 \n tidak diproses`
 5. Tulis program yang membaca string `"12x"` dengan `strconv.Atoi`, menangani error-nya dengan `if err != nil`, dan mencetak pesan yang ramah pengguna.
 6. Coba `fmt.Println(string(65))` dan `go vet`. Jelaskan mengapa hasilnya `A` dan apa cara yang benar untuk mendapatkan teks `"65"`.
 7. Diskusikan: sebuah toko online menyimpan harga dalam `float64`. Jelaskan mengapa ini berisiko untuk perhitungan uang, dan rancang alternatif yang aman memakai integer.
+8. Hitung akar-akar persamaan kuadrat `x² + 2x + 5 = 0` dengan rumus ABC memakai `complex128` dan `cmplx.Sqrt` (diskriminannya negatif). Cetak bagian real dan imajiner tiap akar dengan `real` dan `imag`, lalu verifikasi dengan mensubstitusikan akar ke persamaan. Mengapa `a < b` untuk bilangan kompleks tidak dapat dikompilasi?
 
 ---
 

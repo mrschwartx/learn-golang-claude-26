@@ -6,7 +6,7 @@
 
 - [Teori](#teori)
   - [18.1 Core Go Commands](#181-core-go-commands)
-  - [18.2 Cache dan Build Berulang](#182-cache-dan-build-berulang)
+  - [18.2 Cache, Build Berulang, dan `go clean`](#182-cache-build-berulang-dan-go-clean)
   - [18.3 Code Generation: `go generate`](#183-code-generation-go-generate)
   - [18.4 Build Tags dan Build Constraints](#184-build-tags-dan-build-constraints)
   - [18.5 Kualitas Kode: `gofmt`, `goimports`, `go vet`, `go fix`](#185-kualitas-kode-gofmt-goimports-go-vet-go-fix)
@@ -18,6 +18,7 @@
   - [`go generate` dengan Generator Sendiri](#go-generate-dengan-generator-sendiri)
   - [Build Tags dan Berkas per Platform](#build-tags-dan-berkas-per-platform)
   - [Konfigurasi `golangci-lint` dan `govulncheck`](#konfigurasi-golangci-lint-dan-govulncheck)
+  - [Membersihkan dengan `go clean`](#membersihkan-dengan-go-clean)
 - [Latihan](#latihan)
 
 ---
@@ -42,7 +43,7 @@ Seluruh siklus pengembangan Go dikendalikan satu perintah: **`go`**. Rangkuman p
 | `go list` | Mencetak informasi package/modul (`go list -m all`, `go list ./...`) |
 | `go doc` | Dokumentasi di terminal ([Modul 2](02-instalasi-setup.md)) |
 | `go env` | Menampilkan/mengatur environment Go |
-| `go clean` | Menghapus berkas hasil build; `go clean -cache` / `-modcache` membersihkan cache |
+| `go clean` | Menghapus berkas hasil build; `-cache`, `-testcache`, `-modcache` membersihkan cache (18.2) |
 | `go version` | Versi Go; `go version -m ./app` menampilkan **modul dan versi di dalam sebuah binary** |
 | `go generate` | Menjalankan generator kode (18.3) |
 | `go fix` | Memperbarui kode ke idiom terbaru (18.5) |
@@ -63,9 +64,24 @@ Flag build yang paling sering dipakai:
 | `-v` | Menampilkan package yang dikompilasi |
 | `-gcflags "..."` | Flag untuk compiler ([Modul 20](20-advanced-topics.md)) |
 
-### 18.2 Cache dan Build Berulang
+### 18.2 Cache, Build Berulang, dan `go clean`
 
 Go menyimpan hasil kompilasi dan hasil uji di **build cache**, sehingga build dan test berikutnya sangat cepat bila kode tidak berubah. Hasil uji yang di-cache ditandai `(cached)`; paksa jalan ulang dengan `go test -count=1`. Lokasi cache: `go env GOCACHE`. Di CI, simpan `GOCACHE` dan `GOMODCACHE` antar-run untuk mempercepat pipeline.
+
+**`go clean`** menghapus berkas yang dihasilkan perintah `go` lain. Tanpa argumen, ia menghapus artefak di direktori package saat ini, misalnya binary hasil `go build` yang bernama sama dengan direktori atau modulnya dan berkas `*.test` hasil `go test -c`. Dengan flag, ia membersihkan cache:
+
+| Perintah | Yang dihapus |
+|---|---|
+| `go clean` | Binary dan artefak build di direktori package saat ini |
+| `go clean -n` | Tidak menghapus apa pun; hanya **mencetak** perintah yang akan dijalankan (*dry run*) |
+| `go clean -x` | Menghapus sambil mencetak setiap perintah yang dijalankan |
+| `go clean -r` | Seperti `go clean`, tetapi juga untuk seluruh package yang diimpor |
+| `go clean -cache` | Seluruh build cache (`GOCACHE`) |
+| `go clean -testcache` | Hanya hasil uji yang di-cache (alternatif global dari `go test -count=1`) |
+| `go clean -fuzzcache` | Korpus fuzzing yang di-cache ([Modul 15](15-testing-benchmarking.md)) |
+| `go clean -modcache` | Seluruh modul yang diunduh (`GOMODCACHE`); semua dependensi diunduh ulang pada build berikutnya |
+
+Kapan dipakai: `go clean -testcache` ketika hasil uji tampak basi atau bergantung pada kondisi di luar kode (berkas, jaringan); `go clean -cache` untuk menyingkirkan dugaan cache korup atau mengukur waktu build dari nol; `go clean -modcache` untuk membebaskan ruang disk atau memastikan tidak ada modul rusak. Jangan menjalankannya rutin di mesin pengembangan karena menghilangkan manfaat cache; di CI, lebih baik menyimpan cache daripada membersihkannya.
 
 ### 18.3 Code Generation: `go generate`
 
@@ -328,6 +344,43 @@ go version -m ./app
 go fix -diff ./...
 ```
 
+### Membersihkan dengan `go clean`
+
+```bash
+mkdir -p /tmp/bersih && cd /tmp/bersih
+go mod init bersih
+
+cat > main.go <<'EOF'
+package main
+
+import "fmt"
+
+func main() { fmt.Println("halo") }
+EOF
+
+go build            # menghasilkan binary bernama "bersih" (nama modul)
+ls                  # go.mod  main.go  bersih
+
+go clean -n         # dry run: hanya mencetak perintah penghapusan
+ls                  # binary masih ada
+
+go clean            # menghapus binary
+ls                  # go.mod  main.go
+```
+
+Lihat ukuran dan lokasi cache, lalu bersihkan hanya cache uji:
+
+```bash
+go env GOCACHE GOMODCACHE
+du -sh "$(go env GOCACHE)"
+
+go test ./... ; go test ./...   # putaran kedua menampilkan (cached)
+go clean -testcache
+go test ./...                    # berjalan ulang tanpa (cached)
+```
+
+Pada peringatan `-modcache`: perintah `go clean -modcache` menghapus semua dependensi yang diunduh untuk seluruh proyek di mesin Anda. Coba hanya jika Anda terhubung ke jaringan dan siap mengunduh ulang.
+
 ## Latihan
 
 1. Jalankan `go vet` pada `vet_demo.go`, catat dua temuannya, lalu perbaiki keduanya (kirim `*Penghitung` dan ganti `%d` dengan `%s`). Mengapa menyalin `sync.Mutex` berbahaya?
@@ -337,6 +390,7 @@ go fix -diff ./...
 5. Pasang `golangci-lint`, jalankan pada proyek Anda dengan konfigurasi di atas, dan perbaiki minimal tiga temuan. Aktifkan `gosec`, lalu jelaskan satu temuan yang Anda anggap valid dan satu yang merupakan false positive.
 6. Bangun binary dari proyek yang memakai dependensi pihak ketiga, lalu jalankan `govulncheck -mode=binary` dan `go version -m`. Jelaskan perbedaan pemindaian berbasis **keterjangkauan** dengan pemindai yang hanya mencocokkan nama dan versi paket.
 7. Diskusikan: tim Anda ingin menerapkan aturan "tidak ada merge tanpa lint dan uji lulus". Rancang pipeline CI lengkap (format, vet, lint, `test -race`, `govulncheck`, build, dan push image Docker), tentukan mana yang memblokir merge dan mana yang hanya peringatan, serta cara menjaga pipeline tetap cepat.
+8. Bangun binary dengan `go build`, jalankan `go clean -n` dan `go clean -x`, lalu jelaskan perbedaan keduanya. Ukur waktu `go build` pertama, kedua (cache hangat), dan setelah `go clean -cache`. Skenario apa di CI yang membenarkan membersihkan cache, dan skenario apa yang justru menyimpannya?
 
 ---
 

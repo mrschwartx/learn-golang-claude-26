@@ -17,6 +17,10 @@
   - [Server-Sent Events](#server-sent-events)
   - [Klien HTTP dengan Timeout](#klien-http-dengan-timeout)
   - [Contoh CLI dengan Cobra dan Framework Gin (Pihak Ketiga)](#contoh-cli-dengan-cobra-dan-framework-gin-pihak-ketiga)
+  - [CLI dengan urfave/cli](#cli-dengan-urfavecli)
+  - [TUI dengan Bubble Tea](#tui-dengan-bubble-tea)
+  - [Echo, Fiber, dan Beego: Endpoint yang Sama](#echo-fiber-dan-beego-endpoint-yang-sama)
+  - [WebSocket dengan Melody dan Publikasi ke Centrifugo](#websocket-dengan-melody-dan-publikasi-ke-centrifugo)
 - [Latihan](#latihan)
 
 ---
@@ -34,6 +38,15 @@ Go sangat cocok untuk **command-line tool**: satu binary, startup instan, dan cr
 | **Cobra** (`spf13/cobra`) | Standar de facto untuk CLI bersubcommand: flag POSIX, bantuan otomatis, shell completion; sering dipasangkan dengan **Viper** untuk konfigurasi. Dipakai `kubectl` dan Docker CLI |
 | **urfave/cli** | API deklaratif berbasis struct; ringan dan mudah dipelajari |
 | **Bubble Tea** (`charmbracelet/bubbletea`) | Framework **TUI** (antarmuka terminal interaktif) dengan arsitektur ala Elm: `Model`, `Update`, `View`; sering dipakai bersama Lip Gloss dan Bubbles |
+
+Cara memilih di antara keempatnya:
+
+- **`flag`** bila tool hanya punya satu perintah dan beberapa opsi, tanpa dependensi tambahan.
+- **Cobra** bila tool punya banyak subcommand bersarang (`app server start`, `app db migrate`), butuh shell completion, atau akan diintegrasikan dengan Viper.
+- **urfave/cli** bila ingin definisi perintah yang ringkas dalam satu struktur data dan tidak butuh ekosistem sebesar Cobra. Contohnya ada di bagian Praktik.
+- **Bubble Tea** bukan pengganti Cobra atau urfave/cli: ia dipakai untuk antarmuka **interaktif** (menu, daftar pilihan, progress bar, formulir) di dalam terminal. Keduanya sering dipakai bersamaan: Cobra untuk parsing perintah, Bubble Tea untuk tampilan interaktif pada salah satu subcommand.
+
+Bubble Tea memakai pola **Model-Update-View** (arsitektur Elm). `Model` menyimpan seluruh state, `Update(msg)` menerima peristiwa (tombol ditekan, timer, hasil I/O) dan mengembalikan state baru beserta perintah berikutnya, dan `View()` merender state menjadi string. Karena state hanya berubah di `Update`, alur programnya mudah diuji dan diikuti.
 
 Tips merancang CLI yang baik: kode keluar (`os.Exit`) **0** untuk sukses dan bukan-nol untuk gagal; tulis hasil ke **stdout** dan pesan error/log ke **stderr**; sediakan `--help` dan `--version`; dukung konfigurasi lewat flag, environment variable, lalu berkas konfigurasi (urutan prioritas jelas).
 
@@ -99,6 +112,17 @@ Banyak layanan Go berjalan baik hanya dengan standard library. Framework menamba
 | **Fiber** | Gaya Express.js; dibangun di atas **fasthttp**, **bukan `net/http`** sehingga middleware `net/http` tidak otomatis kompatibel |
 | **Beego** | Framework *full-stack* (MVC, ORM, CLI `bee`) yang lebih "berpendirian" |
 
+Perbedaan yang paling sering menentukan pilihan:
+
+| Aspek | Gin | Echo | Fiber | Beego |
+|---|---|---|---|---|
+| Signature handler | `func(*gin.Context)` (tanpa return) | `func(echo.Context) error` | `func(*fiber.Ctx) error` (v2) | method pada struct `Controller` |
+| Penanganan error | Manual (`c.JSON(...)` / `c.AbortWithError`) | Cukup `return err`, ditangani error handler terpusat | Cukup `return err`, ditangani error handler terpusat | Manual di dalam method controller |
+| Berbasis `net/http` | Ya | Ya | **Tidak** (`fasthttp`) | Ya |
+| Gaya | Minimalis, router + middleware | Minimalis, router + middleware | Mirip Express.js | *Full-stack* MVC dengan ORM dan CLI |
+
+Contoh endpoint yang sama di ketiga framework tambahan ada di bagian Praktik.
+
 Panduan memilih: untuk layanan baru, mulai dari **`net/http` + `ServeMux` Go 1.22** — sering sudah cukup. Pilih Gin atau Echo jika tim menginginkan produktivitas ekstra; pilih Fiber hanya bila Anda memahami konsekuensi `fasthttp`. Apa pun pilihannya, **pisahkan logika bisnis dari lapisan HTTP** agar framework mudah diganti.
 
 ### 16.5 Struktur Aplikasi Web
@@ -126,6 +150,13 @@ Untuk komunikasi dua arah atau push data ke klien:
 | **WebSocket** | Dua arah penuh. Pustaka populer: `gorilla/websocket`, `coder/websocket` |
 | **Melody** (`olahol/melody`) | Lapisan tipis di atas WebSocket dengan *session* dan *broadcast* yang sederhana |
 | **Centrifugo** | **Server realtime mandiri** (ditulis dalam Go) yang menangani koneksi WebSocket/SSE, channel pub/sub, dan presence; aplikasi Anda hanya mempublikasikan pesan lewat HTTP/gRPC API-nya. Cocok jika backend utama bukan Go atau ingin memisahkan beban koneksi |
+
+Memilih di antara opsi realtime:
+
+- **SSE** cukup bila hanya server yang mengirim data (notifikasi, progress, feed). Ia memakai HTTP biasa sehingga ramah proxy dan load balancer, dan klien (`EventSource` di browser) menyambung ulang otomatis.
+- **WebSocket langsung** (`coder/websocket`, `gorilla/websocket`) bila Anda ingin kendali penuh atas protokol dan manajemen koneksi.
+- **Melody** bila Anda ingin WebSocket dengan *broadcast* dan *session* tanpa menulis sendiri manajemen kumpulan koneksi. Cocok untuk aplikasi kecil sampai menengah dalam satu proses.
+- **Centrifugo** bila koneksi realtime perlu dipisahkan dari backend utama: jumlah koneksi besar, banyak instance backend, atau backend bukan Go. Server Centrifugo menahan semua koneksi klien; backend Anda hanya memanggil API HTTP/gRPC untuk mempublikasikan pesan ke sebuah *channel*, dan Centrifugo yang menyebarkannya ke semua pelanggan.
 
 Setiap koneksi realtime menahan sebuah goroutine (atau lebih), sehingga model goroutine Go ([Modul 12](12-goroutines-channels.md)) cocok untuk puluhan ribu koneksi — tetapi tetap perlu batas, timeout ping/pong, dan penanganan klien lambat.
 
@@ -425,6 +456,310 @@ func main() {
 
 Bandingkan jumlah baris, binding, dan perilaku error dengan versi `net/http` di atas.
 
+### CLI dengan urfave/cli
+
+Versi yang sama dengan contoh Cobra di atas, ditulis dengan `urfave/cli` v3. Seluruh definisi perintah berupa satu struktur data.
+
+```go
+// urfave_main.go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/urfave/cli/v3"
+)
+
+func main() {
+	cmd := &cli.Command{
+		Name:  "sapa",
+		Usage: "Aplikasi penyapa",
+		Commands: []*cli.Command{
+			{
+				Name:      "halo",
+				Usage:     "Menyapa seseorang",
+				ArgsUsage: "[nama]",
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:    "ulang",
+						Aliases: []string{"n"},
+						Value:   1,
+						Usage:   "jumlah pengulangan",
+					},
+				},
+				Action: func(ctx context.Context, c *cli.Command) error {
+					nama := c.Args().First()
+					if nama == "" {
+						return fmt.Errorf("nama wajib diisi")
+					}
+					for i := 0; i < int(c.Int("ulang")); i++ {
+						fmt.Printf("Halo, %s!\n", nama)
+					}
+					return nil
+				},
+			},
+		},
+	}
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+```bash
+go mod init sapa && go get github.com/urfave/cli/v3@latest
+go run urfave_main.go halo Andi -n 2
+go run urfave_main.go --help
+```
+
+Perhatikan perbedaannya dengan Cobra: perintah dan flag dideklarasikan sebagai nilai di dalam struct (bukan dirangkai dengan pemanggilan method), dan `Action` menerima `context.Context` sehingga pembatalan dapat diteruskan ke pekerjaan di dalamnya. API urfave/cli berubah antara versi mayor (v2 dan v3); pastikan contoh sesuai dengan versi yang Anda pasang.
+
+### TUI dengan Bubble Tea
+
+Aplikasi terminal interaktif sederhana: sebuah penghitung yang diubah dengan tombol panah.
+
+```go
+// tui_main.go
+package main
+
+import (
+	"fmt"
+	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+type model struct {
+	hitung int
+}
+
+// Init dipanggil sekali saat program mulai; nil berarti tidak ada pekerjaan awal.
+func (m model) Init() tea.Cmd { return nil }
+
+// Update menerima peristiwa dan mengembalikan state baru.
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "up", "k":
+			m.hitung++
+		case "down", "j":
+			m.hitung--
+		}
+	}
+	return m, nil
+}
+
+// View merender state menjadi string.
+func (m model) View() string {
+	return fmt.Sprintf("\nHitungan: %d\n\n↑/↓ (atau k/j) mengubah nilai · q keluar\n", m.hitung)
+}
+
+func main() {
+	if _, err := tea.NewProgram(model{}).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
+```
+
+```bash
+go mod init tui && go get github.com/charmbracelet/bubbletea@latest
+go run tui_main.go
+```
+
+Contoh memakai jalur impor `github.com/charmbracelet/bubbletea` (v1). Bila Anda memasang versi yang lebih baru dengan jalur impor berbeda, ikuti panduan migrasi pada repositori Bubble Tea. Karena `Model` hanyalah tipe Go biasa, `Update` dapat diuji tanpa terminal: panggil `Update(tea.KeyMsg{...})` lalu periksa `View()`.
+
+### Echo, Fiber, dan Beego: Endpoint yang Sama
+
+Ketiga program berikut membuat endpoint `GET /halo/{nama}` yang sama dengan contoh Gin di atas, sehingga perbedaan gaya mudah dibandingkan. Jalankan masing-masing di direktori dan modul terpisah.
+
+```go
+// echo_main.go
+package main
+
+import (
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+)
+
+func main() {
+	e := echo.New()
+	e.Use(middleware.Recover()) // panic di handler menjadi 500, bukan proses mati
+
+	e.GET("/halo/:nama", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"pesan": "Halo, " + c.Param("nama")})
+	})
+
+	e.Logger.Fatal(e.Start(":8081"))
+}
+```
+
+```go
+// fiber_main.go
+package main
+
+import (
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+func main() {
+	app := fiber.New()
+
+	app.Get("/halo/:nama", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"pesan": "Halo, " + c.Params("nama")})
+	})
+
+	log.Fatal(app.Listen(":8082"))
+}
+```
+
+```go
+// beego_main.go
+package main
+
+import (
+	"github.com/beego/beego/v2/server/web"
+)
+
+type HaloController struct {
+	web.Controller
+}
+
+// Get menangani GET pada route yang dipetakan ke controller ini.
+func (c *HaloController) Get() {
+	nama := c.Ctx.Input.Param(":nama")
+	c.Data["json"] = map[string]string{"pesan": "Halo, " + nama}
+	_ = c.ServeJSON()
+}
+
+func main() {
+	web.Router("/halo/:nama", &HaloController{})
+	web.Run(":8083")
+}
+```
+
+```bash
+go mod init contoh && go get github.com/labstack/echo/v4 github.com/gofiber/fiber/v2 github.com/beego/beego/v2@latest
+go run echo_main.go &
+curl http://localhost:8081/halo/Andi
+```
+
+Hal yang perlu dicermati dari ketiganya:
+
+- **Echo**: handler mengembalikan `error`, sehingga `return err` cukup dan penanganan dilakukan satu tempat oleh error handler Echo.
+- **Fiber**: tampilannya hampir sama dengan Echo, tetapi `*fiber.Ctx` milik `fasthttp`. Middleware dan handler `net/http` standar tidak bisa dipasang langsung; Anda butuh adaptor. Signature handler berbeda antar versi mayor Fiber, jadi periksa dokumentasi versi yang Anda pasang.
+- **Beego**: berorientasi controller (MVC). Satu struct dapat memiliki method `Get`, `Post`, `Put`, `Delete`, dan data dikirim lewat `c.Data`. Cocok bila tim terbiasa dengan gaya MVC dan menginginkan ORM serta CLI scaffolding (`bee`) dalam satu paket.
+
+### WebSocket dengan Melody dan Publikasi ke Centrifugo
+
+**Melody**: sebuah ruang obrolan sederhana. Setiap pesan yang diterima disiarkan ke seluruh koneksi.
+
+```go
+// melody_main.go
+package main
+
+import (
+	"log"
+	"net/http"
+
+	"github.com/olahol/melody"
+)
+
+func main() {
+	m := melody.New()
+
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if err := m.HandleRequest(w, r); err != nil {
+			log.Println("ws:", err)
+		}
+	})
+
+	m.HandleConnect(func(s *melody.Session) {
+		_ = m.Broadcast([]byte("seseorang bergabung"))
+	})
+
+	m.HandleMessage(func(s *melody.Session, msg []byte) {
+		_ = m.Broadcast(msg) // siarkan ke semua koneksi
+	})
+
+	log.Fatal(http.ListenAndServe(":8084", nil))
+}
+```
+
+```bash
+go mod init obrolan && go get github.com/olahol/melody@latest
+go run melody_main.go
+# di dua terminal berbeda (butuh websocat atau wscat):
+websocat ws://localhost:8084/ws
+```
+
+Ketik pesan di satu terminal dan pesan itu muncul di terminal lainnya. Seluruh koneksi hidup di dalam proses ini, sehingga bila Anda menjalankan dua instance server, pengguna di instance A tidak melihat pesan pengguna di instance B. Itulah masalah yang diselesaikan Centrifugo.
+
+**Centrifugo**: server realtime terpisah. Backend Go tidak memegang koneksi klien; ia hanya mempublikasikan pesan lewat HTTP API.
+
+```bash
+# 1. Buat konfigurasi awal (berisi kunci API dan rahasia token), lalu jalankan server
+docker run --rm -v "$PWD":/centrifugo centrifugo/centrifugo:v6 centrifugo genconfig
+docker run --rm -v "$PWD":/centrifugo -p 8000:8000 centrifugo/centrifugo:v6 centrifugo --config=config.json
+```
+
+```go
+// publish_main.go: backend memublikasikan pesan ke channel "obrolan"
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	body := strings.NewReader(`{"channel":"obrolan","data":{"teks":"halo dari Go"}}`)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:8000/api/publish", body)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", os.Getenv("CENTRIFUGO_API_KEY"))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	hasil, _ := io.ReadAll(resp.Body)
+	fmt.Println(resp.Status, string(hasil))
+}
+```
+
+```bash
+export CENTRIFUGO_API_KEY="<nilai http_api key dari config.json>"
+go run publish_main.go
+```
+
+Pesan yang dipublikasikan akan diterima oleh semua klien yang berlangganan channel `obrolan` lewat WebSocket atau SSE Centrifugo. Periksa isi balasan, bukan hanya status HTTP: Centrifugo dapat membalas `200` dengan objek `error` di dalam JSON (misalnya channel tidak dikenal). Format berkas konfigurasi dan opsi `genconfig` dapat berubah antar versi mayor, jadi ikuti dokumentasi Centrifugo untuk versi yang Anda pakai.
+
 ## Latihan
 
 1. Perluas REST API dengan `PUT /items/{id}` dan `DELETE /items/{id}`. Pastikan `DELETE` pada id yang tidak ada mengembalikan `404`, dan `PUT` memvalidasi input seperti `POST`.
@@ -434,6 +769,10 @@ Bandingkan jumlah baris, binding, dan perilaku error dengan versi `net/http` di 
 5. Tambahkan graceful shutdown ke server ([Modul 13](13-sync-context-patterns.md)) dan buktikan request yang sedang berjalan diselesaikan sebelum proses berhenti.
 6. Buat klien yang memanggil API di atas dengan `http.Client` ber-timeout dan **retry** terbatas (maksimal 3 kali, jeda bertambah) untuk status `5xx`. Mengapa tidak semua error aman di-retry?
 7. Diskusikan: sebuah tim ingin memakai Gin untuk layanan baru, sementara rekan lain bersikeras memakai `net/http` saja sejak Go 1.22. Susun kriteria keputusan (kebutuhan fitur, ekosistem middleware, keterikatan framework, performa, keterampilan tim) dan tentukan pilihan Anda beserta alasannya.
+8. Tulis ulang CLI `sapa` dengan satu subcommand tambahan (`selamat-pagi`) memakai Cobra, lalu memakai urfave/cli. Bandingkan jumlah baris, cara mendeklarasikan flag, dan tampilan `--help`. Kapan Anda memilih masing-masing?
+9. Kembangkan aplikasi Bubble Tea menjadi daftar tugas: tampilkan beberapa item, pindahkan kursor dengan panah, tandai selesai dengan spasi. Tulis uji yang memanggil `Update` dengan pesan tombol dan memeriksa `View()` tanpa membuka terminal.
+10. Implementasikan endpoint `GET /halo/{nama}` dengan `net/http`, Gin, Echo, Fiber, dan Beego. Buat tabel perbandingan: jumlah baris, cara menangani error, dan apakah middleware `net/http` standar dapat dipasang. Mengapa Fiber memerlukan adaptor?
+11. Jalankan dua instance server Melody di port berbeda dan buktikan pesan tidak lintas instance. Lalu pasang Centrifugo, publikasikan pesan dari Go, dan jelaskan bagaimana arsitektur ini menyelesaikan masalah tersebut. Apa yang tetap menjadi tanggung jawab backend Anda (autentikasi, otorisasi channel)?
 
 ---
 
