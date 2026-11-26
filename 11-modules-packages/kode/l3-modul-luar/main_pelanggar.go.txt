@@ -1,0 +1,10 @@
+// Salin ke main.go untuk melihat error: use of internal package ... not allowed
+package main
+
+import (
+	"fmt"
+
+	"contoh.com/tokoku/internal/harga"
+)
+
+func main() { fmt.Println(harga.Total([]int{1, 2})) }
